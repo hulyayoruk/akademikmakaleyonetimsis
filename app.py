@@ -12,11 +12,7 @@ from deep_translator import GoogleTranslator
 from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import cm
-from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+from fpdf import FPDF
 
 nltk.download("stopwords", quiet=True)
 nltk.download("punkt", quiet=True)
@@ -502,83 +498,51 @@ def create_docx(title, original_text, translated_text, summary, source_type="API
 
 
 def create_pdf_report(title, original_text, translated_text, summary, source_type="API"):
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=A4,
-        rightMargin=2*cm,
-        leftMargin=2*cm,
-        topMargin=2.5*cm,
-        bottomMargin=2*cm
-    )
+    try:
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
 
-    styles = getSampleStyleSheet()
+        pdf.set_font("Helvetica", "B", 16)
+        safe_title = title.encode("latin-1", "replace").decode("latin-1")
+        pdf.multi_cell(0, 10, safe_title, align="C")
+        pdf.ln(3)
 
-    title_style = ParagraphStyle(
-        "CustomTitle",
-        parent=styles["Title"],
-        fontSize=18,
-        textColor=colors.HexColor("#1a1425"),
-        spaceAfter=6,
-        fontName="Helvetica-Bold",
-        alignment=1
-    )
+        pdf.set_font("Helvetica", "", 8)
+        meta = f"Kaynak: {source_type} | Akademik Makale Yonetim Sistemi"
+        pdf.cell(0, 6, meta, align="C")
+        pdf.ln(6)
+        pdf.set_draw_color(201, 169, 110)
+        pdf.set_line_width(0.5)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(6)
 
-    heading_style = ParagraphStyle(
-        "CustomHeading",
-        parent=styles["Heading1"],
-        fontSize=13,
-        textColor=colors.HexColor("#302b63"),
-        spaceBefore=14,
-        spaceAfter=6,
-        fontName="Helvetica-Bold"
-    )
+        def add_section(heading, text, max_chars=4000):
+            pdf.set_font("Helvetica", "B", 12)
+            safe_heading = heading.encode("latin-1", "replace").decode("latin-1")
+            pdf.cell(0, 8, safe_heading)
+            pdf.ln(5)
+            pdf.set_font("Helvetica", "", 10)
+            safe_text = text[:max_chars].encode("latin-1", "replace").decode("latin-1")
+            if len(text) > max_chars:
+                safe_text += "..."
+            pdf.multi_cell(0, 6, safe_text)
+            pdf.ln(5)
 
-    body_style = ParagraphStyle(
-        "CustomBody",
-        parent=styles["Normal"],
-        fontSize=10,
-        textColor=colors.HexColor("#2d2d2d"),
-        leading=16,
-        spaceAfter=8
-    )
+        summary_tr = translate_text(summary)
+        add_section("Rafine Ozet (Turkce)", summary_tr if summary_tr else summary)
+        add_section("Turkce Ceviri", translated_text, max_chars=5000)
+        add_section("Orijinal Metin (Ingilizce)", original_text, max_chars=3000)
 
-    meta_style = ParagraphStyle(
-        "Meta",
-        parent=styles["Normal"],
-        fontSize=8,
-        textColor=colors.HexColor("#7c6f8a"),
-        alignment=1,
-        spaceAfter=12
-    )
-
-    story = []
-
-    story.append(Paragraph(title, title_style))
-    story.append(Spacer(1, 0.3*cm))
-    story.append(Paragraph(f"Kaynak: {source_type} | Akademik Makale Yönetim Sistemi", meta_style))
-    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#c9a96e"), spaceAfter=12))
-
-    story.append(Paragraph("📋 Rafine Özet (Türkçe)", heading_style))
-    summary_tr = translate_text(summary)
-    safe_summary = (summary_tr if summary_tr else summary).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    story.append(Paragraph(safe_summary, body_style))
-    story.append(Spacer(1, 0.4*cm))
-
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#302b63"), spaceAfter=8))
-    story.append(Paragraph("🌐 Türkçe Çeviri", heading_style))
-    safe_translated = translated_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    story.append(Paragraph(safe_translated[:6000], body_style))
-    story.append(Spacer(1, 0.4*cm))
-
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#302b63"), spaceAfter=8))
-    story.append(Paragraph("📄 Orijinal Metin (İngilizce)", heading_style))
-    safe_original = original_text[:4000].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    story.append(Paragraph(safe_original + ("..." if len(original_text) > 4000 else ""), body_style))
-
-    doc.build(story)
-    buf.seek(0)
-    return buf
+        buf = io.BytesIO()
+        pdf_bytes = pdf.output()
+        buf.write(bytes(pdf_bytes))
+        buf.seek(0)
+        return buf
+    except Exception as e:
+        buf = io.BytesIO(b"PDF olusturulamadi.")
+        buf.seek(0)
+        return buf
 
 
 def extract_pdf_text(uploaded_file):
