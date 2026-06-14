@@ -1,4 +1,4 @@
-streamlit==1.36.0
+streamlit
 pypdf==4.2.0
 deep-translator==1.11.4
 python-docx==1.1.2
