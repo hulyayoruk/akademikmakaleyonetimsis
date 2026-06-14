@@ -9,7 +9,6 @@ import nltk
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use("Agg")
-from wordcloud import WordCloud
 from PIL import Image
 
 from pypdf import PdfReader
@@ -23,7 +22,20 @@ from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
 
+try:
+    nltk.data.find("corpora/stopwords")
+except LookupError:
+    nltk.download("stopwords", quiet=True)
 
+try:
+    nltk.data.find("tokenizers/punkt")
+except LookupError:
+    nltk.download("punkt", quiet=True)
+
+try:
+    nltk.data.find("tokenizers/punkt_tab")
+except LookupError:
+    nltk.download("punkt_tab", quiet=True)
 
 from nltk.corpus import stopwords
 from nltk.tokenize import sent_tokenize, word_tokenize
@@ -444,28 +456,34 @@ def estimate_reading_time(text):
 
 def generate_wordcloud(text):
     try:
-        try:
-            stop_words = set(stopwords.words("english"))
-        except Exception:
-            stop_words = set()
-        wc = WordCloud(
-            width=800,
-            height=400,
-            background_color=None,
-            mode="RGBA",
-            colormap="copper",
-            stopwords=stop_words,
-            max_words=80,
-            prefer_horizontal=0.8,
-            collocations=False
-        ).generate(text)
-        fig, ax = plt.subplots(figsize=(10, 5))
-        fig.patch.set_alpha(0)
-        ax.patch.set_alpha(0)
-        ax.imshow(wc, interpolation="bilinear")
+        keywords = extract_keywords(text, top_n=40)
+        if not keywords:
+            return None
+        words = [w for w, c in keywords]
+        counts = [c for w, c in keywords]
+        max_count = max(counts) if counts else 1
+        sizes = [12 + int((c / max_count) * 38) for c in counts]
+        colors = ["#c9a96e", "#e8d5b7", "#a07840", "#d4b896", "#8b6914",
+                  "#f0e0c0", "#b8860b", "#daa520", "#cd853f", "#d2691e"]
+        fig, ax = plt.subplots(figsize=(12, 5))
+        fig.patch.set_facecolor("#1a1230")
+        ax.set_facecolor("#1a1230")
+        import random
+        random.seed(42)
+        positions = []
+        for i, (word, size) in enumerate(zip(words, sizes)):
+            x = random.uniform(0.05, 0.95)
+            y = random.uniform(0.1, 0.9)
+            color = colors[i % len(colors)]
+            ax.text(x, y, word, fontsize=size, color=color,
+                    ha="center", va="center",
+                    transform=ax.transAxes,
+                    fontweight="bold" if size > 30 else "normal",
+                    alpha=0.85 + random.uniform(0, 0.15))
         ax.axis("off")
         buf = io.BytesIO()
-        plt.savefig(buf, format="png", bbox_inches="tight", transparent=True, dpi=150)
+        plt.savefig(buf, format="png", bbox_inches="tight",
+                    facecolor="#1a1230", dpi=120)
         plt.close(fig)
         buf.seek(0)
         return buf
